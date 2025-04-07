@@ -34,7 +34,7 @@ func readLines(f io.ReadCloser, lines chan<- string) {
 		str := string(buffer[:n])
 		parts := strings.Split(str, "\n")
 		for i := 0; i < len(parts)-1; i++ {
-			lines <- fmt.Sprintf("read: %s%s\n", currentLineContents, parts[i])
+			lines <- fmt.Sprintf("%s%s", currentLineContents, parts[i])
 			currentLineContents = ""
 		}
 		currentLineContents += parts[len(parts)-1]

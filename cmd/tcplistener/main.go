@@ -2,12 +2,11 @@ package main
 
 import (
 	"fmt"
-	"github.com/alexmarian/httpfromtcp/internal/utils"
+	"github.com/alexmarian/httpfromtcp/internal/request"
 	"log"
 	"net"
 )
 
-const inputFilePath = "messages.txt"
 const port = 42069
 
 func main() {
@@ -23,10 +22,13 @@ func main() {
 			log.Fatalf("Error accepting connections: %v", err)
 		}
 		log.Printf("Accepted connection: %v\n", accept)
-		connectionChannel := utils.GetLinesChannel(accept)
-		for line := range connectionChannel {
-			fmt.Printf("%s\n", line)
+		req, err := request.RequestFromReader(accept)
+		if err != nil {
+			log.Fatalf("Error reading request: %v", err)
 		}
-
+		fmt.Println("Request line:")
+		fmt.Printf("- Method: %s\n", req.RequestLine.Method)
+		fmt.Printf("- Target: %s\n", req.RequestLine.RequestTarget)
+		fmt.Printf("- Version: %s\n", req.RequestLine.HttpVersion)
 	}
 }

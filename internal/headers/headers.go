@@ -3,6 +3,7 @@ package headers
 import (
 	"bytes"
 	"fmt"
+	"slices"
 	"strings"
 )
 
@@ -39,11 +40,38 @@ func parseHeaderLine(data []byte, headers *Headers) error {
 		return fmt.Errorf("invalid header line name: %s", name)
 	}
 
-	(*headers).Set(strings.TrimSpace(name), strings.TrimSpace(string(parts[1])))
+	name = strings.TrimSpace(name)
+	if !isValidName(name) {
+		return fmt.Errorf("invalid header line name: %s", name)
+	}
+	(*headers).Set(name, strings.TrimSpace(string(parts[1])))
 	return nil
 
 }
 
+func isValidName(name string) bool {
+	if len(name) == 0 {
+		return false
+	}
+	for _, r := range name {
+		if !isValidHeaderNameChar(byte(r)) {
+			return false
+		}
+	}
+	return true
+}
+
+func isValidHeaderNameChar(r byte) bool {
+	specials := []byte{
+		'!', '#', '$', '%', '&', '\'', '*', '+', '-', '.', '^', '_', '`', '|', '~',
+	}
+	return (r >= 'A' && r <= 'Z') || (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') || slices.Contains(specials, r)
+}
+
 func (h Headers) Set(key, value string) {
-	h[key] = value
+	h[strings.ToLower(key)] = value
+}
+
+func (h Headers) Get(key string) string {
+	return h[strings.ToLower(key)]
 }

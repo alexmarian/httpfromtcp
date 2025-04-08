@@ -69,7 +69,13 @@ func isValidHeaderNameChar(r byte) bool {
 }
 
 func (h Headers) Set(key, value string) {
-	h[strings.ToLower(key)] = value
+	evalue, present := h[strings.ToLower(key)]
+	if present {
+		h[strings.ToLower(key)] = fmt.Sprintf("%s, %s", evalue, value)
+	} else {
+		h[strings.ToLower(key)] = value
+	}
+
 }
 
 func (h Headers) Get(key string) string {

@@ -36,7 +36,6 @@ type RequestLine struct {
 
 const crlf = "\r\n"
 const bufferSize = 8
-const contentLengthHeader = "Content-Length"
 
 func RequestFromReader(reader io.Reader) (*Request, error) {
 	buf := make([]byte, bufferSize, bufferSize)
@@ -164,7 +163,7 @@ func (r *Request) parseSingle(data []byte) (int, error) {
 		}
 		return n, nil
 	case requestStateParsingBody:
-		contentLenStr, present := r.Headers.Get(contentLengthHeader)
+		contentLenStr, present := r.Headers.Get(headers.ContentLengthHeader)
 		if !present {
 			r.state = requestStateDone
 			return len(data), nil

@@ -7,6 +7,10 @@ import (
 	"strings"
 )
 
+const ContentLengthHeader = "Content-Length"
+const ContentTypeHeader = "Content-Type"
+const ConnectionHeader = "Connection"
+
 type Headers map[string]string
 
 func NewHeaders() Headers {

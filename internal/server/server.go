@@ -15,7 +15,7 @@ type Server struct {
 	closed   atomic.Bool
 }
 
-type Handler func(w response.Writer, req *request.Request) *response.HandlerError
+type Handler func(w *response.Writer, req *request.Request) *response.HandlerError
 
 func Serve(port int, handler Handler) (*Server, error) {
 	listener, err := net.Listen("tcp", fmt.Sprintf(":%d", port))
@@ -61,7 +61,7 @@ func (s *Server) handle(conn net.Conn) {
 		}.Write(res)
 		return
 	}
-	hErr := (*s.handler)(*res, req)
+	hErr := (*s.handler)(res, req)
 	if hErr != nil {
 		hErr.Write(res)
 		return

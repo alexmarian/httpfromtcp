@@ -132,3 +132,16 @@ func GetDefaultHeaders(contentLen int) headers.Headers {
 	header.Set(headers.ContentLengthHeader, fmt.Sprintf("%d", contentLen))
 	return header
 }
+
+func (w *Writer) WriteChunkedBody(p []byte) (int, error) {
+	length := len(p)
+	w.Write([]byte(fmt.Sprintf("%x\r\n", length)))
+	w.Write(p)
+	w.Write([]byte("\r\n"))
+	return length, nil
+}
+
+func (w *Writer) WriteChunkedBodyDone() (int, error) {
+	w.Write([]byte("0\r\n\r\n"))
+	return 1, nil
+}

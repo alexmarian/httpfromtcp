@@ -10,6 +10,7 @@ import (
 const ContentLengthHeader = "Content-Length"
 const ContentTypeHeader = "Content-Type"
 const ConnectionHeader = "Connection"
+const TransferEncodingHeader = "Transfer-Encoding"
 
 type Headers map[string]string
 
@@ -83,6 +84,9 @@ func (h Headers) Set(key, value string) {
 }
 func (h Headers) Override(key, value string) {
 	h[strings.ToLower(key)] = value
+}
+func (h Headers) Remove(key string) {
+	delete(h, strings.ToLower(key))
 }
 
 func (h Headers) Get(key string) (string, bool) {

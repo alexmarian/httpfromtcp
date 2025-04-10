@@ -134,6 +134,9 @@ func GetDefaultHeaders(contentLen int) headers.Headers {
 }
 
 func (w *Writer) WriteChunkedBody(p []byte) (int, error) {
+	if w.writerState != writerStateHeadersWrote {
+		return 0, fmt.Errorf("wrong state: %d, expected: %d", w.writerState, writerStateHeadersWrote)
+	}
 	length := len(p)
 	w.Write([]byte(fmt.Sprintf("%x\r\n", length)))
 	w.Write(p)

@@ -1,7 +1,7 @@
 package main
 
 import (
-	"fmt"
+	"github.com/alexmarian/httpfromtcp/internal/headers"
 	"github.com/alexmarian/httpfromtcp/internal/request"
 	"github.com/alexmarian/httpfromtcp/internal/response"
 	"github.com/alexmarian/httpfromtcp/internal/server"
@@ -32,7 +32,10 @@ func main() {
 
 func handler(w *response.Writer, req *request.Request) *response.HandlerError {
 	if strings.HasPrefix(req.RequestLine.RequestTarget, "/httpbin/") {
-		return proxyHandler(w, req)
+		handlerError := handleProxy(w, req)
+		if handlerError != nil {
+			return handlerError
+		}
 	} else {
 		switch req.RequestLine.RequestTarget {
 		case "/yourproblem":
@@ -51,48 +54,41 @@ func handler(w *response.Writer, req *request.Request) *response.HandlerError {
 	}
 	return nil
 }
-func proxyHandler(w *response.Writer, req *request.Request) *response.HandlerError {
-	target := strings.TrimPrefix(req.RequestLine.RequestTarget, "/httpbin/")
-	url := "https://httpbin.org/" + target
-	fmt.Println("Proxying to", url)
-	resp, err := http.Get(url)
+
+func handleProxy(w *response.Writer, req *request.Request) *response.HandlerError {
+	location := "https://httpbin.org/" + strings.TrimPrefix(req.RequestLine.RequestTarget, "/httpbin/")
+	resp, err := http.Get(location)
+	defer resp.Body.Close()
 	if err != nil {
 		return &response.HandlerError{
 			StatusCode: response.INTERNAL_SERVER_ERROR,
 			Message:    "Error fetching data from httpbin",
 		}
 	}
-	defer resp.Body.Close()
-
 	w.WriteStatusLine(response.SUCCESS)
-	h := response.GetDefaultHeaders(0)
-	h.Override("Transfer-Encoding", "chunked")
-	h.Remove("Content-Length")
-	w.WriteHeaders(h)
-
-	const maxChunkSize = 1024
-	buffer := make([]byte, maxChunkSize)
+	hs := response.GetDefaultHeaders(0)
+	hs.Remove(headers.ContentLengthHeader)
+	hs.Set(headers.ContentTypeHeader, resp.Header.Get(headers.ContentTypeHeader))
+	hs.Set(headers.TransferEncodingHeader, "chunked")
+	w.WriteHeaders(hs)
+	buffer := make([]byte, 1024)
+	body := resp.Body
 	for {
-		n, err := resp.Body.Read(buffer)
-		fmt.Println("Read", n, "bytes")
-		if n > 0 {
-			_, err = w.WriteChunkedBody(buffer[:n])
+		br, err := body.Read(buffer)
+		if br > 0 {
+			_, err := w.WriteChunkedBody(buffer[:br])
 			if err != nil {
-				fmt.Println("Error writing chunked body:", err)
-				break
+				log.Println("Error writing chunked body:", err)
+				return &response.HandlerError{
+					StatusCode: response.INTERNAL_SERVER_ERROR,
+					Message:    err.Error(),
+				}
 			}
 		}
-		if err == io.EOF {
-			break
+		if err != nil && err == io.EOF {
+			w.WriteChunkedBodyDone()
+			return nil
 		}
-		if err != nil {
-			fmt.Println("Error reading response body:", err)
-			break
-		}
-	}
-	_, err = w.WriteChunkedBodyDone()
-	if err != nil {
-		fmt.Println("Error writing chunked body done:", err)
 	}
 	return nil
 }

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"github.com/alexmarian/httpfromtcp/internal/headers"
 	"io"
+	"os"
 )
 
 type StatusCode int
@@ -18,16 +19,62 @@ type HandlerError struct {
 	StatusCode StatusCode
 	Message    string
 }
+type writerState int
 
-func (he HandlerError) Write(w io.Writer) {
-	WriteStatusLine(w, he.StatusCode)
-	messageBytes := []byte(he.Message)
-	headers := GetDefaultHeaders(len(messageBytes))
-	WriteHeaders(w, headers)
-	w.Write(messageBytes)
+const (
+	writerStateInitialized writerState = iota
+	writerStateResponseLineWrote
+	writerStateHeadersWrote
+	writerStateDone
+)
+
+type Writer struct {
+	io.Writer
+	writerState writerState
 }
 
-func WriteStatusLine(w io.Writer, statusCode StatusCode) error {
+func (he HandlerError) Write(w *Writer) {
+	switch he.StatusCode {
+	case BAD_REQUEST:
+		w.WriteFile("html/bad_request.html", "text/html", BAD_REQUEST)
+	case INTERNAL_SERVER_ERROR:
+		w.WriteFile("html/internal_server_error.html", "text/html", INTERNAL_SERVER_ERROR)
+	default:
+		w.WriteStatusLine(he.StatusCode)
+		messageBytes := []byte(he.Message)
+		headers := GetDefaultHeaders(len(messageBytes))
+		w.WriteHeaders(headers)
+		w.WriteBody(messageBytes)
+	}
+
+}
+
+func NewWriter(w io.Writer) *Writer {
+	return &Writer{
+		Writer:      w,
+		writerState: writerStateInitialized,
+	}
+}
+
+func (w *Writer) WriteFile(file, contentType string, code StatusCode) (int, *HandlerError) {
+	fileContent, err := os.ReadFile(file)
+	if err != nil {
+		return 0, &HandlerError{
+			StatusCode: INTERNAL_SERVER_ERROR,
+			Message:    fmt.Sprintf("Failed to load %s", file),
+		}
+	}
+	w.WriteStatusLine(code)
+	defaultHeaders := GetDefaultHeaders(len(fileContent))
+	defaultHeaders.Override(headers.ContentTypeHeader, contentType)
+	w.WriteHeaders(defaultHeaders)
+	w.WriteBody(fileContent)
+	return len(fileContent), nil
+}
+func (w *Writer) WriteStatusLine(statusCode StatusCode) error {
+	if w.writerState != writerStateInitialized {
+		return fmt.Errorf("wrong state: %d, expected: %d", w.writerState, writerStateInitialized)
+	}
 	switch statusCode {
 	case SUCCESS:
 		_, err := w.Write([]byte("HTTP/1.1 200 OK\r\n"))
@@ -48,9 +95,13 @@ func WriteStatusLine(w io.Writer, statusCode StatusCode) error {
 	default:
 		return fmt.Errorf("unsupported status code: %d", statusCode)
 	}
+	w.writerState = writerStateResponseLineWrote
 	return nil
 }
-func WriteHeaders(w io.Writer, headers headers.Headers) error {
+func (w *Writer) WriteHeaders(headers headers.Headers) error {
+	if w.writerState != writerStateResponseLineWrote {
+		return fmt.Errorf("wrong state: %d, expected: %d", w.writerState, writerStateHeadersWrote)
+	}
 	for name, value := range headers {
 		_, err := w.Write([]byte(fmt.Sprintf("%s: %s\r\n", name, value)))
 		if err != nil {
@@ -61,7 +112,17 @@ func WriteHeaders(w io.Writer, headers headers.Headers) error {
 	if err != nil {
 		return err
 	}
+	w.writerState = writerStateHeadersWrote
 	return nil
+}
+func (w *Writer) WriteBody(p []byte) (int, error) {
+	if w.writerState != writerStateHeadersWrote {
+		return 0, fmt.Errorf("wrong state: %d, expected: %d", w.writerState, writerStateHeadersWrote)
+	}
+	w.Write(p)
+	w.Write([]byte("\n"))
+	w.writerState = writerStateDone
+	return len(p), nil
 }
 
 func GetDefaultHeaders(contentLen int) headers.Headers {

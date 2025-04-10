@@ -4,7 +4,6 @@ import (
 	"github.com/alexmarian/httpfromtcp/internal/request"
 	"github.com/alexmarian/httpfromtcp/internal/response"
 	"github.com/alexmarian/httpfromtcp/internal/server"
-	"io"
 	"log"
 	"os"
 	"os/signal"
@@ -27,7 +26,7 @@ func main() {
 	log.Println("Server gracefully stopped")
 }
 
-func handler(w io.Writer, req *request.Request) *response.HandlerError {
+func handler(w response.Writer, req *request.Request) *response.HandlerError {
 	switch req.RequestLine.RequestTarget {
 	case "/yourproblem":
 		return &response.HandlerError{
@@ -40,10 +39,7 @@ func handler(w io.Writer, req *request.Request) *response.HandlerError {
 			Message:    "Woopsie, my bad",
 		}
 	default:
-		response.WriteStatusLine(w, response.SUCCESS)
-		response.WriteHeaders(w, response.GetDefaultHeaders(len("All good, frfr")))
-		w.Write([]byte("All good, frfr\n"))
-
+		w.WriteFile("html/success.html", "text/html", response.SUCCESS)
 	}
 	return nil
 }

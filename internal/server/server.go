@@ -12,7 +12,8 @@ import (
 )
 
 type Server struct {
-	listener net.Listener
+	listener *net.Listener
+	handler  *Handler
 	closed   atomic.Bool
 }
 
@@ -24,7 +25,8 @@ func Serve(port int, handler Handler) (*Server, error) {
 		return nil, fmt.Errorf("error listening on port %d: %w", port, err)
 	}
 	server := &Server{
-		listener: listener,
+		listener: &listener,
+		handler:  &handler,
 		closed:   atomic.Bool{},
 	}
 	go server.listen(handler)
@@ -32,24 +34,24 @@ func Serve(port int, handler Handler) (*Server, error) {
 }
 func (s *Server) Close() error {
 	s.closed.Store(true)
-	if err := s.listener.Close(); err != nil {
+	if err := (*s.listener).Close(); err != nil {
 		return fmt.Errorf("error closing server: %w", err)
 	}
 	return nil
 }
 func (s *Server) listen(handler Handler) {
 	for !s.closed.Load() {
-		conn, err := s.listener.Accept()
+		conn, err := (*s.listener).Accept()
 		if err != nil {
 			log.Println("Error accepting connection:", err)
 			continue
 		}
 		log.Printf("Accepted connection: %v\n", conn)
-		s.handle(conn, handler)
+		s.handle(conn)
 	}
 }
 
-func (s *Server) handle(conn net.Conn, handler Handler) {
+func (s *Server) handle(conn net.Conn) {
 	req, err := request.RequestFromReader(conn)
 	if err != nil {
 		log.Println("Error reading request:", err)
@@ -60,7 +62,7 @@ func (s *Server) handle(conn net.Conn, handler Handler) {
 		return
 	}
 	buf := bytes.NewBuffer([]byte{})
-	hErr := handler(buf, req)
+	hErr := (*s.handler)(buf, req)
 	if hErr != nil {
 		hErr.Write(conn)
 		return

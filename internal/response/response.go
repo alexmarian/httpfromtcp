@@ -14,6 +14,19 @@ const (
 	INTERNAL_SERVER_ERROR StatusCode = 500
 )
 
+type HandlerError struct {
+	StatusCode StatusCode
+	Message    string
+}
+
+func (he HandlerError) Write(w io.Writer) {
+	WriteStatusLine(w, he.StatusCode)
+	messageBytes := []byte(he.Message)
+	headers := GetDefaultHeaders(len(messageBytes))
+	WriteHeaders(w, headers)
+	w.Write(messageBytes)
+}
+
 func WriteStatusLine(w io.Writer, statusCode StatusCode) error {
 	switch statusCode {
 	case SUCCESS:

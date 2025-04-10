@@ -1,6 +1,9 @@
 package main
 
 import (
+	"bytes"
+	"crypto/sha256"
+	"fmt"
 	"github.com/alexmarian/httpfromtcp/internal/headers"
 	"github.com/alexmarian/httpfromtcp/internal/request"
 	"github.com/alexmarian/httpfromtcp/internal/response"
@@ -48,6 +51,9 @@ func handler(w *response.Writer, req *request.Request) *response.HandlerError {
 				StatusCode: response.INTERNAL_SERVER_ERROR,
 				Message:    "Woopsie, my bad",
 			}
+		case "/video":
+			w.WriteFile("assets/vim.mp4", "video/mp4", response.SUCCESS)
+
 		default:
 			w.WriteFile("html/success.html", "text/html", response.SUCCESS)
 		}
@@ -66,16 +72,18 @@ func handleProxy(w *response.Writer, req *request.Request) *response.HandlerErro
 		}
 	}
 	w.WriteStatusLine(response.SUCCESS)
-	hs := response.GetDefaultHeaders(0)
-	hs.Remove(headers.ContentLengthHeader)
+	hs := headers.NewHeaders()
 	hs.Set(headers.ContentTypeHeader, resp.Header.Get(headers.ContentTypeHeader))
 	hs.Set(headers.TransferEncodingHeader, "chunked")
+	hs.Set(headers.TrailerHeader, strings.Join([]string{headers.XContentSHA256Trailer, headers.XContentSLengthTrailer}, ", "))
 	w.WriteHeaders(hs)
 	buffer := make([]byte, 1024)
+	b := bytes.Buffer{}
 	body := resp.Body
 	for {
 		br, err := body.Read(buffer)
 		if br > 0 {
+			b.Write(buffer[:br])
 			_, err := w.WriteChunkedBody(buffer[:br])
 			if err != nil {
 				log.Println("Error writing chunked body:", err)
@@ -87,6 +95,11 @@ func handleProxy(w *response.Writer, req *request.Request) *response.HandlerErro
 		}
 		if err != nil && err == io.EOF {
 			w.WriteChunkedBodyDone()
+			trailers := headers.NewHeaders()
+			allResponseBytes := b.Bytes()
+			trailers.Set(headers.XContentSHA256Trailer, fmt.Sprintf("%x", sha256.Sum256(allResponseBytes)))
+			trailers.Set(headers.XContentSLengthTrailer, fmt.Sprintf("%d", len(allResponseBytes)))
+			w.WriteTrailers(trailers)
 			return nil
 		}
 	}

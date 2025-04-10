@@ -25,6 +25,7 @@ const (
 	writerStateInitialized writerState = iota
 	writerStateResponseLineWrote
 	writerStateHeadersWrote
+	writerStateBodyDone
 	writerStateDone
 )
 
@@ -115,13 +116,31 @@ func (w *Writer) WriteHeaders(headers headers.Headers) error {
 	w.writerState = writerStateHeadersWrote
 	return nil
 }
+
+func (w *Writer) WriteTrailers(h headers.Headers) error {
+	if w.writerState != writerStateBodyDone {
+		return fmt.Errorf("wrong state: %d, expected: %d", w.writerState, writerStateBodyDone)
+	}
+	for name, value := range h {
+		_, err := w.Write([]byte(fmt.Sprintf("%s: %s\r\n", name, value)))
+		if err != nil {
+			return err
+		}
+	}
+	_, err := w.Write([]byte("\r\n"))
+	if err != nil {
+		return err
+	}
+	w.writerState = writerStateDone
+	return nil
+}
 func (w *Writer) WriteBody(p []byte) (int, error) {
 	if w.writerState != writerStateHeadersWrote {
 		return 0, fmt.Errorf("wrong state: %d, expected: %d", w.writerState, writerStateHeadersWrote)
 	}
 	w.Write(p)
 	w.Write([]byte("\n"))
-	w.writerState = writerStateDone
+	w.writerState = writerStateBodyDone
 	return len(p), nil
 }
 
@@ -145,6 +164,7 @@ func (w *Writer) WriteChunkedBody(p []byte) (int, error) {
 }
 
 func (w *Writer) WriteChunkedBodyDone() (int, error) {
-	w.Write([]byte("0\r\n\r\n"))
+	w.Write([]byte("0\r\n"))
+	w.writerState = writerStateBodyDone
 	return 1, nil
 }

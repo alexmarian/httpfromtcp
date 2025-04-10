@@ -7,6 +7,8 @@ import (
 	"os"
 )
 
+const fileBufferSize = 4096
+
 type StatusCode int
 
 const (
@@ -58,19 +60,48 @@ func NewWriter(w io.Writer) *Writer {
 }
 
 func (w *Writer) WriteFile(file, contentType string, code StatusCode) (int, *HandlerError) {
-	fileContent, err := os.ReadFile(file)
+	fstream, err := os.OpenFile(file, os.O_RDONLY, 0)
 	if err != nil {
 		return 0, &HandlerError{
 			StatusCode: INTERNAL_SERVER_ERROR,
-			Message:    fmt.Sprintf("Failed to load %s", file),
+			Message:    fmt.Sprintf("Failed to open %s", file),
 		}
 	}
+	stat, _ := fstream.Stat()
 	w.WriteStatusLine(code)
-	defaultHeaders := GetDefaultHeaders(len(fileContent))
+	defaultHeaders := GetDefaultHeaders(int(stat.Size()))
 	defaultHeaders.Override(headers.ContentTypeHeader, contentType)
 	w.WriteHeaders(defaultHeaders)
-	w.WriteBody(fileContent)
-	return len(fileContent), nil
+	defer fstream.Close()
+
+	buffer := make([]byte, fileBufferSize)
+	total := 0
+	for {
+		n, err := fstream.Read(buffer)
+		if n > 0 {
+			total += n
+			_, err := w.Write(buffer[:n])
+			if err != nil {
+				return 0, &HandlerError{
+					StatusCode: INTERNAL_SERVER_ERROR,
+					Message:    fmt.Sprintf("Failed to write %s", file),
+				}
+			}
+		}
+		if err != nil && err != io.EOF {
+			return 0, &HandlerError{
+				StatusCode: INTERNAL_SERVER_ERROR,
+				Message:    fmt.Sprintf("Failed to write %s", file),
+			}
+		}
+		if err == io.EOF {
+			break
+		}
+	}
+
+	w.Write([]byte("\r\n"))
+	w.writerState = writerStateBodyDone
+	return total, nil
 }
 func (w *Writer) WriteStatusLine(statusCode StatusCode) error {
 	if w.writerState != writerStateInitialized {
